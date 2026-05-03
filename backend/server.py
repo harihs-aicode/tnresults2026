@@ -2,9 +2,8 @@ import re
 import time
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
+import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -16,6 +15,22 @@ TN_STATE_CODE = "22"
 TN_RESULTS_FOLDER = "ResultAcGenMay2026"
 REQUEST_TIMEOUT_SECONDS = 20
 CACHE_TTL_SECONDS = 60
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/136.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-IN,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Referer": "https://results.eci.gov.in/",
+    "Origin": "https://results.eci.gov.in",
+}
 
 _live_cache = {
     "timestamp": 0,
@@ -122,29 +137,34 @@ def strip_tags(html):
     return collapse_whitespace(text)
 
 
-def fetch_html(url):
-    request_obj = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-IN,en;q=0.9",
-        },
-    )
+def build_eci_session():
+    session = requests.Session()
+    session.headers.update(DEFAULT_HEADERS)
+    return session
 
+
+def fetch_html(url, session):
     try:
-        with urlopen(request_obj, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            return response.read().decode("utf-8", errors="ignore")
-    except HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code} for {url}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Network error for {url}: {exc.reason}") from exc
+        response = session.get(
+            url,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        response.encoding = response.encoding or "utf-8"
+        return response.text
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else "unknown"
+        raise RuntimeError(f"HTTP {status_code} for {url}") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Network error for {url}: {exc}") from exc
 
 
-def fetch_first_available(urls):
+def fetch_first_available(urls, session):
     last_error = None
     for url in urls:
         try:
-            return fetch_html(url)
+            return fetch_html(url, session)
         except RuntimeError as exc:
             last_error = exc
     raise last_error or RuntimeError("No fetch URL provided")
@@ -314,7 +334,10 @@ def fetch_tn_official_results(force=False):
     ):
         return _live_cache["payload"]
 
-    home_html = fetch_html(ECI_HOME_URL)
+    session = build_eci_session()
+
+    # Warm the session with the landing page so the result pages can reuse cookies.
+    home_html = fetch_html(ECI_HOME_URL, session)
     scheduled_payload = build_scheduled_payload(home_html)
 
     party_urls = [
@@ -323,7 +346,7 @@ def fetch_tn_official_results(force=False):
     ]
 
     try:
-        party_html = fetch_first_available(party_urls)
+        party_html = fetch_first_available(party_urls, session)
     except RuntimeError:
         _live_cache["timestamp"] = now
         _live_cache["payload"] = scheduled_payload
@@ -343,7 +366,7 @@ def fetch_tn_official_results(force=False):
         ]
 
         try:
-            page_html = fetch_first_available(page_urls)
+            page_html = fetch_first_available(page_urls, session)
         except RuntimeError:
             if page == 1:
                 break
@@ -409,13 +432,20 @@ def tn_election_live():
         status_code = 200 if payload["status"] in {"live", "partial"} else 503
         return jsonify(payload), status_code
     except Exception as exc:
+        error_message = str(exc)
+        if "HTTP 403" in error_message:
+            error_message = (
+                "ECI is refusing the server request with HTTP 403. "
+                "This usually means the host IP is blocked or extra anti-bot "
+                "protection is being applied on the official site."
+            )
         return (
             jsonify(
                 {
                     "status": "error",
                     "source": "Election Commission of India",
                     "officialUrl": ECI_HOME_URL,
-                    "message": str(exc),
+                    "message": error_message,
                     "checkedAt": datetime.now(timezone.utc).isoformat(),
                 }
             ),
