@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tn-election-dashboard-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.13
