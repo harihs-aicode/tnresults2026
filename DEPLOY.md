@@ -10,7 +10,7 @@ This repo is set up for:
 1. Push this repo to GitHub.
 2. In Render, create a new `Web Service`.
 3. Connect your GitHub repo.
-4. Render will detect [render.yaml](/abs/path/c:/Users/harin/OneDrive/Documents/salary-insights/render.yaml:1).
+4. Render will detect `render.yaml`.
 5. Deploy the service.
 
 Backend settings used:
@@ -44,7 +44,7 @@ VITE_API_BASE_URL=https://your-render-backend-url.onrender.com
 
 5. Deploy.
 
-The frontend already reads `VITE_API_BASE_URL` from [frontend/src/App.jsx](/abs/path/c:/Users/harin/OneDrive/Documents/salary-insights/frontend/src/App.jsx:18).
+The frontend already reads `VITE_API_BASE_URL` from `frontend/src/App.jsx`.
 
 ## 3. Share the app
 

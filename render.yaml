@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: tn-election-dashboard-api
+    name: tn2026-elections-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
