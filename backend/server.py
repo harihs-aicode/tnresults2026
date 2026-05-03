@@ -429,7 +429,7 @@ def tn_election_live():
 
     try:
         payload = fetch_tn_official_results(force=force_refresh)
-        status_code = 200 if payload["status"] in {"live", "partial"} else 503
+        status_code = 200 if payload["status"] in {"live", "partial"} else 200
         return jsonify(payload), status_code
     except Exception as exc:
         error_message = str(exc)
@@ -446,10 +446,11 @@ def tn_election_live():
                     "source": "Election Commission of India",
                     "officialUrl": ECI_HOME_URL,
                     "message": error_message,
+                    "data":[],
                     "checkedAt": datetime.now(timezone.utc).isoformat(),
                 }
             ),
-            502,
+            200,
         )
 
 
